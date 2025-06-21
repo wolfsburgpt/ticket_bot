@@ -10,6 +10,7 @@ import os
 from dotenv import load_dotenv
 import json
 import pytz
+from requests.exceptions import RequestException
 
 # Setup logging to both console and file
 logging.basicConfig(
@@ -31,8 +32,9 @@ TARGET_DAY = config['target_day']
 TARGET_MONTH = config['target_month']
 CHECK_INTERVAL = config['check_interval_seconds']
 
-# Setup Discord bot with command prefix '!'
+# Setup Discord bot with command prefix '!' and required intents
 intents = discord.Intents.default()
+intents.message_content = True  # Enable Message Content Intent
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 class TicketBot:
@@ -70,12 +72,12 @@ class TicketBot:
                 self.check_count += 1
                 logging.info(f"Check attempt #{self.check_count}")
                 try:
-                    # Make HTTP request
+                    # Make HTTP request with retry logic
                     response = requests.get(self.url, headers=headers, timeout=30)
-                    response.raise_for_status()
+                    response.raise_for_status()  # Raise exception for bad status codes
 
                     # Handle response content
-                    content = gzip.decompress(response.content).decode('utf-8') if response.content.startswith(b'\x1f\x8b') else response.text
+                    content = gzip.decompress(response.content).decode('utf-8', errors='ignore') if response.content.startswith(b'\x1f\x8b') else response.text
                     soup = BeautifulSoup(content, 'html.parser')
 
                     # Find date containers
@@ -120,6 +122,8 @@ class TicketBot:
                     else:
                         logging.info(f"{self.target_month.upper()} {self.target_day} tickets are available!")
 
+                except RequestException as e:
+                    logging.error(f"HTTP request failed: {e}")
                 except Exception as e:
                     logging.error(f"Error during check: {e}")
             else:
